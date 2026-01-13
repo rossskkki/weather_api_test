@@ -106,22 +106,22 @@ def get_model_config(target_name):
 def load_prompt():
     """
     从 txt 文件中读取 system prompt。
-    如果文件不存在，返回 None。
     """
     if not os.path.exists(PROMPT_FILE):
         print(f"❌ 错误: 找不到文件 {PROMPT_FILE}")
-        return None
+        return ""  # <--- 改为返回空字符串，而不是 None
     
     try:
         with open(PROMPT_FILE, 'r', encoding='utf-8') as f:
             content = f.read().strip()
             if not content:
                 print(f"⚠️ 警告: {PROMPT_FILE} 文件是空的")
-                return None
+                return "" # <--- 改为返回空字符串
             return content
     except Exception as e:
         print(f"❌ 读取文件出错: {e}")
-        return None
+        return "" # <--- 改为返回空字符串
+        
 # ================= 核心工具：按标点切分 =================
 def split_text_by_punctuation(text):
     """
@@ -286,49 +286,69 @@ def call_translation_api_generic(text, system_prompt, config):
         return {"hksl": f"结构错误: {data}", "status": "error"}
 
 # ================= Web 接口逻辑 =================
-
-def process_request_logic(text, config):
+def process_request_logic(user_input_text, current_config):
     """
-    实际处理翻译/请求的逻辑
-    :param text: 用户输入的文本
-    :param config: 选中的模型配置字典 (包含 url, key, model_id 等)
+    处理单个请求的核心流程：
+    切分 -> 翻译 -> 清洗 -> 查库 -> 组装
+    :param user_input_text: 用户文本
+    :param current_config:  从前端传来的、当前选中的模型配置字典
     """
+    system_prompt = load_prompt()
+    segments = split_text_by_punctuation(user_input_text)
     
-    # 从 config 中提取参数
-    api_url = config["url"]
-    api_key = config["key"]
-    model_id = config["model_id"]
-    model_params = config["params"]
-
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {api_key}"
-    }
-
-    payload = {
-        "model": model_id,
-        "messages": [
-            {"role": "system", "content": "你是一个翻译助手。"}, # 你的 System Prompt
-            {"role": "user", "content": text}
-        ],
-        "stream": False,
-        **model_params # 展开合并其他参数 (如 temperature)
-    }
-
-    # 发送请求
-    import requests # 确保导入了 requests
-    response = requests.post(api_url, headers=headers, json=payload)
+    final_result_list = []
     
-    # 处理响应
-    if response.status_code == 200:
-        res_json = response.json()
-        content = res_json['choices'][0]['message']['content']
-        return {
-            "result": content,
-            "used_model": config["name"] # 返回给前端确认用了哪个模型
-        }
-    else:
-        raise Exception(f"API Error {response.status_code}: {response.text}")
+    # 【修改点】：这里不再写死 MODELS_CONFIG[0]，而是直接使用传入的 current_config
+    # current_config = MODELS_CONFIG[0]  <-- 这行删掉
+
+    for seg in segments:
+        # 1. 如果是标点，直接返回
+        if is_punctuation(seg):
+            final_result_list.append({
+                "type": "punctuation",
+                "word": seg,
+                "id": None
+            })
+            continue
+        
+        # 2. 如果是文本，调用翻译
+        try:
+            # 调用 LLM (传入当前选中的配置)
+            res = call_translation_api_generic(seg, system_prompt, current_config)
+            
+            # 假设 call_translation_api_generic 返回的是 {'hksl': '翻译结果...'}
+            # 如果你的 api 返回结构不同，请根据实际情况调整这里
+            if isinstance(res, str):
+                # 兼容性处理：如果只返回了字符串
+                cleaned_gloss_str = clean_gloss_text(res)
+            else:
+                cleaned_gloss_str = clean_gloss_text(res.get('hksl', ''))
+            
+            # 3. 拆解 Gloss 句子，逐词查 ID
+            gloss_words = cleaned_gloss_str.split(" ")
+            
+            for word in gloss_words:
+                if not word.strip(): continue
+                
+                # 查库获取 ID
+                word_id = get_id_from_db(word)
+                
+                final_result_list.append({
+                    "type": "gloss",
+                    "word": word,
+                    "id": word_id 
+                })
+                
+        except Exception as e:
+            print(f"Translation failed for segment '{seg}': {e}")
+            # 发生错误时，返回原文并标记 error
+            final_result_list.append({
+                "type": "error",
+                "word": seg,
+                "id": None
+            })
+
+    return final_result_list
 
 # ================= Flask 路由 =================
 @app.route('/api/translate', methods=['POST'])
