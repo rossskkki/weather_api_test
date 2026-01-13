@@ -62,9 +62,9 @@ MODELS_CONFIG = [
     },
     {
         "name": "gemini-2.5-pro",
-        "url": os.getenv("OPENAI_API_URL"), # 假设你用的是兼容OpenAI格式的中转
-        "key": os.getenv("OPENAI_API_KEY"), 
-        "model_id": os.getenv("OPENAI_MODEL_NAME2"),
+        "url": os.getenv("OPENRT_API_URL"), # 假设你用的是兼容OpenAI格式的中转
+        "key": os.getenv("OPENRT_API_KEY"), 
+        "model_id": os.getenv("OPENRT_MODEL_NAME_GEMINI"),
         "params": {
             "temperature": 0.2,       # 翻译任务通常用低温度
             "max_tokens": 500,        # 限制输出长度
@@ -73,9 +73,9 @@ MODELS_CONFIG = [
     },
     {
         "name": "claude",
-        "url": os.getenv("OPENAI_API_URL"), # 假设你用的是兼容OpenAI格式的中转
-        "key": os.getenv("OPENAI_API_KEY"), 
-        "model_id": os.getenv("OPENAI_MODEL_NAME3"),
+        "url": os.getenv("OPENRT_API_URL"), # 假设你用的是兼容OpenAI格式的中转
+        "key": os.getenv("OPENRT_API_KEY"), 
+        "model_id": os.getenv("OPENRT_MODEL_NAME_CLAUDE"),
         "params": {
             "temperature": 0.7,       # 翻译任务通常用低温度
             "max_tokens": 500,        # 限制输出长度
