@@ -226,6 +226,21 @@ def init_db():
         return None
 
 # ================= 数据库查询函数 =================
+def upsert_missing_gloss(conn, word):
+    try:
+        w = str(word).strip()
+        if not w:
+            return
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "INSERT INTO missing_gloss (word, count) VALUES (%s, 1) "
+                "ON DUPLICATE KEY UPDATE count = count + 1",
+                (w,),
+            )
+        conn.commit()
+    except mysql.connector.Error as e:
+        print(f"missing_gloss 写入失败: {e}")
+
 def get_id_from_db(word):
     # """
     # 模拟查数据库的操作。
@@ -253,7 +268,10 @@ def get_id_from_db(word):
             query = "SELECT word_id FROM search WHERE synonym = %s LIMIT 1"
             cursor.execute(query, (normalized,))
             result = cursor.fetchone()
-            return result['word_id'] if result else None
+            if result:
+                return result['word_id']
+        upsert_missing_gloss(conn, normalized)
+        return None
     except mysql.connector.Error as e:
         print(f"数据库查询失败: {e}")
         return None
@@ -370,7 +388,9 @@ def process_request_logic(user_input_text, current_config):
                 
                 # 查库获取 ID
                 word_id = get_id_from_db(word)
-                
+                # for demo only
+                if word_id is None:
+                    continue
                 final_result_list.append({
                     "type": "gloss",
                     "word": word,
